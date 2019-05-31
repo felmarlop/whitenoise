@@ -4,12 +4,18 @@ import errno
 import os
 import re
 import textwrap
+import posixpath
 
 from django.conf import settings
-from django.contrib.staticfiles.storage import (
-        ManifestStaticFilesStorage, StaticFilesStorage)
+from django.contrib.staticfiles.storage import StaticFilesStorage
 
 from .compress import Compressor
+
+try:
+    from django.contrib.staticfiles.storage import ManifestStaticFilesStorage
+except ImportError:
+    # For Django versions < 1.7
+    from .storage_backport import ManifestStaticFilesStorage
 
 
 class CompressedStaticFilesMixin(object):
@@ -117,6 +123,25 @@ class CompressedManifestStaticFilesStorage(
     those without the hash in their name)
     """
     _new_files = None
+
+    def clean_name(self, name):
+        """
+        Cleans the name so that Windows style paths work
+        """
+        # Normalize Windows style paths
+        clean_name = posixpath.normpath(name).replace('\\', '/')
+
+        # os.path.normpath() can strip trailing slashes so we implement
+        # a workaround here.
+        if name.endswith('/') and not clean_name.endswith('/'):
+            # Add a trailing slash as it was stripped.
+            clean_name = clean_name + '/'
+
+        # Given an empty string, os.path.normpath() will return ., which we don't want
+        if clean_name == '.':
+            clean_name = ''
+
+        return clean_name
 
     def post_process(self, *args, **kwargs):
         files = super(CompressedManifestStaticFilesStorage, self).post_process(*args, **kwargs)
